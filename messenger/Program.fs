@@ -1,5 +1,8 @@
 ﻿open System
 open System.Linq
+open System.IO
+open System.Net
+open System.Reflection
 open ServiceStack.ServiceHost
 open ServiceStack.WebHost.Endpoints
 open ServiceStack.ServiceInterface
@@ -7,8 +10,11 @@ open ServiceStack.ServiceInterface.Auth
 open ServiceStack.CacheAccess
 open ServiceStack.CacheAccess.Providers
 open ServiceStack.OrmLite
+open ServiceStack.DataAnnotations
+open ServiceStack.Common.Web
 
 type MessageModel() = 
+    [<AutoIncrement>]
     member val Id = -1 with get, set
     member val UserId = -1 with get, set
     member val Text = "" with get, set
@@ -16,6 +22,7 @@ type MessageModel() =
     member val ChatId = -1 with get, set
 
 type ChatModel() = 
+    [<AutoIncrement>]
     member val Id = -1 with get, set
     member val FirstUserId = -1 with get, set
     member val SecondUserId = -1 with get, set
@@ -24,6 +31,8 @@ type ContactModel() =
     member val Id = -1 with get, set
     member val Image = "" with get, set
     member val FullName = "" with get, set
+    member val LastMessage = "" with get, set
+    member val LastMessageDateTime = DateTime.MinValue with get, set
 
 type MessageResponseModel() = 
     member val FullName = "" with get, set
@@ -32,11 +41,12 @@ type MessageResponseModel() =
     member val DateTime = DateTime.Now with get, set
 
 type IDataRepository = 
-    abstract Contacts: ResizeArray<ContactModel>
+    abstract GetContacts: int -> ResizeArray<ContactModel>
     abstract GetMessages: int * int -> ResizeArray<MessageResponseModel>
     abstract SaveMessage: string * int * int -> unit
     abstract GetProfile: int -> string * string
-    abstract SetProfile: int * string * string -> unit
+    abstract SetProfileFullName: int * string -> unit
+    abstract SetProfileImage: int * string * Stream -> unit
 
 type OrmLiteDataRepository(connectionFactory: IDbConnectionFactory) = 
     let GetChatId(firstUserId, secondUserId) = 
@@ -51,23 +61,38 @@ type OrmLiteDataRepository(connectionFactory: IDbConnectionFactory) =
         chatId
 
     interface IDataRepository with
-        member this.Contacts = 
+        member this.GetContacts(userId) = 
             use connection = connectionFactory.OpenDbConnection()
-            connection.Select<ContactModel>("SELECT Id, DisplayName AS Image, FullName FROM UserAuth")
-
+            let contacts = connection.Select<ContactModel>("SELECT Id, DisplayName AS Image, FullName FROM UserAuth")
+            let msgByChatId = connection.Select<MessageModel>().OrderByDescending(fun (m: MessageModel) -> m.DateTime)
+                                                               .GroupBy(fun (m: MessageModel) -> m.ChatId)
+            let chats = connection.Select<ChatModel>()
+            for chat in chats do
+                let contact = if chat.FirstUserId = userId then contacts.Find(fun c -> c.Id = chat.SecondUserId)
+                                                           else contacts.Find(fun c-> c.Id = chat.FirstUserId)
+                let group = msgByChatId.SingleOrDefault(fun c -> c.Key = chat.Id)
+                if group <> null && group.Count() > 0 then
+                    let lastMsg = group.First()
+                    contact.LastMessage <- lastMsg.Text
+                    contact.LastMessageDateTime <- lastMsg.DateTime
+            contacts.OrderByDescending(fun (c: ContactModel) -> c.LastMessageDateTime).ToList()
+            
         member this.GetMessages(firstUserId, secondUserId) = 
             let chatId = GetChatId(firstUserId, secondUserId)
             use connection = connectionFactory.OpenDbConnection()
             let firstUserAuth = connection.GetById<UserAuth>(firstUserId)
             let secondUserAuth = connection.GetById<UserAuth>(secondUserId)
-            let messages = connection.Select<MessageModel>().Where(fun m -> m.ChatId = chatId).OrderBy(fun m -> m.DateTime)
+            let messages = connection.Select<MessageModel>().Where(fun m -> m.ChatId = chatId)
+                                                            .OrderByDescending(fun m -> m.DateTime).Take(20)
             let result = new ResizeArray<MessageResponseModel>()
             for message in messages do
                 let responseMessage = new MessageResponseModel()
                 responseMessage.Text <- message.Text
                 responseMessage.DateTime <- message.DateTime
-                responseMessage.FullName <- if message.UserId = firstUserAuth.Id then firstUserAuth.FullName else secondUserAuth.FullName
-                responseMessage.Image <- if message.UserId = firstUserAuth.Id then firstUserAuth.DisplayName else secondUserAuth.DisplayName
+                responseMessage.FullName <- if message.UserId = firstUserAuth.Id then firstUserAuth.FullName 
+                                                                                 else secondUserAuth.FullName
+                responseMessage.Image <- if message.UserId = firstUserAuth.Id then firstUserAuth.DisplayName
+                                                                              else secondUserAuth.DisplayName
                 result.Add(responseMessage)
             result
             
@@ -82,16 +107,22 @@ type OrmLiteDataRepository(connectionFactory: IDbConnectionFactory) =
             let userAuth = connection.GetById<UserAuth>(userId)
             userAuth.DisplayName, userAuth.FullName
 
-        member this.SetProfile(userId, image, fullName) = 
+        member this.SetProfileFullName(userId, fullName) = 
             use connection = connectionFactory.OpenDbConnection()
-            connection.UpdateOnly(new UserAuth(Id = userId, DisplayName = image), fun (ua: UserAuth) -> ua.DisplayName) |> ignore
-            connection.UpdateOnly(new UserAuth(Id = userId, FullName = fullName), fun (ua: UserAuth) -> ua.FullName) |> ignore  
+            let userAuth = connection.GetById<UserAuth>(userId)
+            userAuth.FullName <- fullName
+            connection.Update(userAuth, fun (ua: UserAuth) -> ua.Id = userId) |> ignore
 
-type BaseResponse() = 
-    member val Result = "" with get, set
+        member this.SetProfileImage(userId, fileName, stream) = 
+            use connection = connectionFactory.OpenDbConnection()
+            let userAuth = connection.GetById<UserAuth>(userId)
+            let imagePath = sprintf "image/%d-%s" userId fileName
+            use fileStream = new FileStream(imagePath, FileMode.Create)
+            stream.CopyTo(fileStream)
+            userAuth.DisplayName <- imagePath
+            connection.Update(userAuth, fun (ua: UserAuth) -> ua.Id = userId) |> ignore
 
 type ProfileResponse() =
-    inherit BaseResponse()
     member val Image = "" with get, set
     member val FullName = "" with get, set
 
@@ -103,7 +134,6 @@ type Profile() =
     member val FullName = "" with get, set
 
 type ChatResponse() = 
-    inherit BaseResponse()
     member val Messages = new ResizeArray<MessageResponseModel>() with get, set
 
 [<Authenticate>]
@@ -114,18 +144,24 @@ type Chat() =
     member val Message = "" with get, set
 
 type ContactsResponse() = 
-    inherit BaseResponse()
     member val Contacts = new ResizeArray<ContactModel>() with get, set
 
 [<Authenticate>]
 [<Route("/contacts")>]
 type Contacts() = interface IReturn<ContactsResponse>
 
+[<Authenticate>]
+[<Route("/image/upload")>]
+[<Route("/image/{FileName}/")>]
+type Image() =
+    interface IReturn<HttpResult>
+    member val FileName = "" with get, set
+
 type MessengerService() =
     inherit Service()
     member this.Post (req: Profile) = 
         let dataRepository: IDataRepository = this.TryResolve()
-        dataRepository.SetProfile(int (this.GetSession().UserAuthId), req.Image, req.FullName)
+        dataRepository.SetProfileFullName(int (this.GetSession().UserAuthId), req.FullName)
         new ProfileResponse()
 
     member this.Get (req: Profile) =
@@ -144,7 +180,22 @@ type MessengerService() =
 
     member this.Get (req: Contacts) = 
         let dataRepository: IDataRepository = this.TryResolve()
-        new ContactsResponse(Contacts = dataRepository.Contacts)
+        new ContactsResponse(Contacts = dataRepository.GetContacts(int (this.GetSession().UserAuthId)))
+
+    member this.Get (req: Image) = 
+        let r = this.Request
+        let image = 
+            match req.FileName with
+            | _ when File.Exists("image/" + req.FileName) -> "image/" + req.FileName
+            | _ -> "image/DefaultImage.png"
+        new HttpResult(new FileInfo(image), true)
+   
+    member this.Post(req: Image) = 
+        if this.Request.Files.Count() = 1 then
+            let image = this.Request.Files.[0]
+            let dataRepository: IDataRepository = this.TryResolve()
+            dataRepository.SetProfileImage(int (this.GetSession().UserAuthId), image.FileName, image.InputStream)
+        new HttpResult(HttpStatusCode.OK, "Ok")   
 
 type AppHost =
     inherit AppHostHttpListenerBase
@@ -165,9 +216,19 @@ type AppHost =
         connection.CreateTableIfNotExists<MessageModel>()
         connection.CreateTableIfNotExists<ChatModel>()
 
+let setupResources = 
+    Directory.CreateDirectory("image") |> ignore
+    use defaultImage = Assembly.GetExecutingAssembly().GetManifestResourceStream("DefaultImage.png")
+    use imageFileStream = new FileStream("image/DefaultImage.png", FileMode.Create, FileAccess.Write)
+    defaultImage.CopyTo(imageFileStream)
+    use sqliteDll = Assembly.GetExecutingAssembly().GetManifestResourceStream("sqlite3.dll")
+    use sqliteFileStream = new FileStream("sqlite3.dll", FileMode.Create, FileAccess.Write)
+    sqliteDll.CopyTo(sqliteFileStream)
+
 [<EntryPoint>]
 let main args =
-    let host = if args.Length = 0 then "http://127.0.0.1:8080/" else args.[0]
+    setupResources
+    let host = if args.Length = 0 then "http://*:8080/" else args.[0]
     printfn "Listening on %s ..." host
     let appHost = new AppHost()
     appHost.Init()

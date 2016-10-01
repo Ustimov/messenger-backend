@@ -58,7 +58,8 @@
     <Compile Include="Program.fs" />
     <None Include="App.config" />
     <Content Include="packages.config" />
-    <None Include="sqlite3.dll" />
+    <EmbeddedResource Include="sqlite3.dll" />
+    <EmbeddedResource Include="DefaultImage.png" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="Mono.Data.Sqlite">
