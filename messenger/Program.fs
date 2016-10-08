@@ -3,6 +3,7 @@ open System.Linq
 open System.IO
 open System.Net
 open System.Reflection
+open System.Runtime.Serialization
 open ServiceStack.ServiceHost
 open ServiceStack.WebHost.Endpoints
 open ServiceStack.ServiceInterface
@@ -27,17 +28,28 @@ type ChatModel() =
     member val FirstUserId = -1 with get, set
     member val SecondUserId = -1 with get, set
 
+[<DataContract(Name = "ContactModel")>]
 type ContactModel() = 
+    [<DataMember>]
     member val Id = -1 with get, set
+    [<DataMember>]
     member val Image = "" with get, set
+    [<DataMember>]
     member val FullName = "" with get, set
+    [<DataMember>]
     member val LastMessage = "" with get, set
+    [<DataMember>]
     member val LastMessageDateTime = DateTime.MinValue with get, set
 
+[<DataContract(Name = "MessageModel")>]
 type MessageResponseModel() = 
+    [<DataMember>]
     member val FullName = "" with get, set
+    [<DataMember>]
     member val Image = "" with get, set
+    [<DataMember>]
     member val Text = "" with get, set
+    [<DataMember>]
     member val DateTime = DateTime.Now with get, set
 
 type IDataRepository = 
@@ -111,6 +123,7 @@ type OrmLiteDataRepository(connectionFactory: IDbConnectionFactory) =
             use connection = connectionFactory.OpenDbConnection()
             let userAuth = connection.GetById<UserAuth>(userId)
             userAuth.FullName <- fullName
+            if userAuth.DisplayName = null then userAuth.DisplayName <- "image/DefaultImage.png"
             connection.Update(userAuth, fun (ua: UserAuth) -> ua.Id = userId) |> ignore
 
         member this.SetProfileImage(userId, fileName, stream) = 
@@ -122,47 +135,59 @@ type OrmLiteDataRepository(connectionFactory: IDbConnectionFactory) =
             userAuth.DisplayName <- imagePath
             connection.Update(userAuth, fun (ua: UserAuth) -> ua.Id = userId) |> ignore
 
+[<DataContract(Name = "ProfileResponse")>]
 type ProfileResponse() =
+    [<DataMember>]
     member val Image = "" with get, set
+    [<DataMember>]
     member val FullName = "" with get, set
 
 [<Authenticate>]
+[<DataContract(Name = "Profile")>]
 [<Route("/profile")>]
 type Profile() = 
     interface IReturn<ProfileResponse>
+    [<DataMember>]
     member val Image = "" with get, set
+    [<DataMember>]
     member val FullName = "" with get, set
 
+[<DataContract(Name = "ChatResponse")>]
 type ChatResponse() = 
+    [<DataMember>]
     member val Messages = new ResizeArray<MessageResponseModel>() with get, set
 
 [<Authenticate>]
+[<DataContract(Name = "Chat")>]
 [<Route("/chat")>]
 type Chat() = 
     interface IReturn<ChatResponse>
+    [<DataMember>]
     member val UserId = -1 with get, set
+    [<DataMember>]
     member val Message = "" with get, set
 
+[<DataContract(Name = "ContactsResponse")>]
 type ContactsResponse() = 
+    [<DataMember>]
     member val Contacts = new ResizeArray<ContactModel>() with get, set
 
 [<Authenticate>]
+[<DataContract(Name = "Contacts")>]
 [<Route("/contacts")>]
 type Contacts() = interface IReturn<ContactsResponse>
 
 [<Authenticate>]
-[<Route("/image/upload")>]
-[<Route("/image/{FileName}/")>]
-type Image() =
-    interface IReturn<HttpResult>
-    member val FileName = "" with get, set
+[<DataContract(Name = "Image")>]
+[<Route("/upload")>]
+type Image() = interface IReturn<HttpResult>
 
 type MessengerService() =
     inherit Service()
     member this.Post (req: Profile) = 
         let dataRepository: IDataRepository = this.TryResolve()
         dataRepository.SetProfileFullName(int (this.GetSession().UserAuthId), req.FullName)
-        new ProfileResponse()
+        new HttpResult(HttpStatusCode.OK, "Ok")
 
     member this.Get (req: Profile) =
         let dataRepository: IDataRepository = this.TryResolve()
@@ -172,7 +197,7 @@ type MessengerService() =
     member this.Post (req: Chat) = 
         let dataRepository: IDataRepository = this.TryResolve()
         dataRepository.SaveMessage(req.Message, int (this.GetSession().UserAuthId), req.UserId)
-        new ChatResponse(Messages = null)
+        new HttpResult(HttpStatusCode.OK, "Ok")
 
     member this.Get (req: Chat) = 
         let dataRepository: IDataRepository = this.TryResolve()
@@ -181,14 +206,6 @@ type MessengerService() =
     member this.Get (req: Contacts) = 
         let dataRepository: IDataRepository = this.TryResolve()
         new ContactsResponse(Contacts = dataRepository.GetContacts(int (this.GetSession().UserAuthId)))
-
-    member this.Get (req: Image) = 
-        let r = this.Request
-        let image = 
-            match req.FileName with
-            | _ when File.Exists("image/" + req.FileName) -> "image/" + req.FileName
-            | _ -> "image/DefaultImage.png"
-        new HttpResult(new FileInfo(image), true)
    
     member this.Post(req: Image) = 
         if this.Request.Files.Count() = 1 then
@@ -228,7 +245,7 @@ let setupResources =
 [<EntryPoint>]
 let main args =
     setupResources
-    let host = if args.Length = 0 then "http://*:8080/" else args.[0]
+    let host = if args.Length = 0 then "http://127.0.0.1:9000/" else args.[0]
     printfn "Listening on %s ..." host
     let appHost = new AppHost()
     appHost.Init()

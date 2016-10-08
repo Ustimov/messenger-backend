@@ -4,17 +4,296 @@ Simple messenger server for Data Structure course written in F# + ServiceStack.
 
 ## Features
 
-* Todo
+* Registration
+
+* Authentication
+
+* User profile with image
+
+* Contact list
+
+* Private chats
+
+* Message sending
 
 ## API
 
-* Todo
+### Registration
+
+Register new user.
+
+#### POST /register
+
+Request
+
+```json
+{"UserName": "String", "Password": "String"}
+```
+
+and response
+
+```json
+{"UserId":"String","SessionId":"String","UserName":"String","ReferrerUrl":"String","ResponseStatus":{"ErrorCode":"String","Message":"String","StackTrace":"String","Errors":[{"ErrorCode":"String","FieldName":"String","Message":"String"}]}}
+```
+
+or request
+
+```xml
+<Registration xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://schemas.servicestack.net/types">
+  <UserName>String</UserName>
+  <Password>String</Password>
+</Registration>
+```
+
+and response
+
+```xml
+<RegistrationResponse xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://schemas.servicestack.net/types">
+  <UserId>String</UserId>
+  <SessionId>String</SessionId>
+  <UserName>String</UserName>
+  <ReferrerUrl>String</ReferrerUrl>
+  <ResponseStatus>
+    <ErrorCode>String</ErrorCode>
+    <Message>String</Message>
+    <StackTrace>String</StackTrace>
+    <Errors>
+      <ResponseError>
+        <ErrorCode>String</ErrorCode>
+        <FieldName>String</FieldName>
+        <Message>String</Message>
+      </ResponseError>
+    </Errors>
+  </ResponseStatus>
+</RegistrationResponse>
+```
+
+### Authentication
+
+Authenticate user with login and password.
+
+#### POST /auth/credentials
+
+Request
+
+```json
+{"UserName":"String","Password":"String","RememberMe":false}
+```
+
+and response
+
+```json
+{"SessionId":"String","UserName":"String","ReferrerUrl":"String","ResponseStatus":{"ErrorCode":"String","Message":"String","StackTrace":"String","Errors":[{"ErrorCode":"String","FieldName":"String","Message":"String"}]}}
+```
+
+or request
+
+```xml
+<Auth xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://schemas.servicestack.net/types">
+  <UserName>String</UserName>
+  <Password>String</Password>
+  <RememberMe>false</RememberMe>
+</Auth>
+```
+
+and response
+
+```xml
+<AuthResponse xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://schemas.servicestack.net/types">
+  <SessionId>String</SessionId>
+  <UserName>String</UserName>
+  <ReferrerUrl>String</ReferrerUrl>
+  <ResponseStatus>
+    <ErrorCode>String</ErrorCode>
+    <Message>String</Message>
+    <StackTrace>String</StackTrace>
+    <Errors>
+      <ResponseError>
+        <ErrorCode>String</ErrorCode>
+        <FieldName>String</FieldName>
+        <Message>String</Message>
+      </ResponseError>
+    </Errors>
+  </ResponseStatus>
+</AuthResponse>
+```
+
+### Logout
+
+Logout user.
+
+#### POST /auth/logout
+
+Response
+
+```json
+{"SessionId":"String","UserName":"String","ReferrerUrl":"String","ResponseStatus":{"ErrorCode":"String","Message":"String","StackTrace":"String","Errors":[{"ErrorCode":"String","FieldName":"String","Message":"String"}]}}
+```
+
+or response
+
+```xml
+<AuthResponse xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://schemas.servicestack.net/types">
+  <SessionId>String</SessionId>
+  <UserName>String</UserName>
+  <ReferrerUrl>String</ReferrerUrl>
+  <ResponseStatus>
+    <ErrorCode>String</ErrorCode>
+    <Message>String</Message>
+    <StackTrace>String</StackTrace>
+    <Errors>
+      <ResponseError>
+        <ErrorCode>String</ErrorCode>
+        <FieldName>String</FieldName>
+        <Message>String</Message>
+      </ResponseError>
+    </Errors>
+  </ResponseStatus>
+</AuthResponse>
+```
+
+### Profile
+
+Get image url and full name of user.
+
+#### GET /profile
+
+Response
+
+```json
+{"Image":"String","FullName":"String"}
+```
+
+or response
+
+```xml
+<ProfileResponse xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://schemas.datacontract.org/2004/07/">
+  <FullName>String</FullName>
+  <Image>String</Image>
+</ProfileResponse>
+```
+
+Set user full name.
+
+#### POST /profile
+
+Request
+
+```json
+{"FullName":"String"}
+```
+
+or
+
+```xml
+<Profile xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://schemas.datacontract.org/2004/07/">
+  <FullName>String</FullName>
+</Profile>
+```
+
+and response HTTP status 200 Ok
+
+### Image
+
+Upload image as form-data.
+
+#### POST /image
+
+Request with image and response HTTP status 200 Ok
+
+### Contacts
+
+Get contact list.
+
+#### GET /contacts
+
+Response
+
+```json
+{"Contacts":[{"Id":0,"Image":"String","FullName":"String","LastMessage":"String","LastMessageDateTime":"\/Date(-62135596800000-0000)\/"}]}
+```
+
+or response
+
+```xml
+<ContactsResponse xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://schemas.datacontract.org/2004/07/">
+  <Contacts>
+    <ContactModel>
+      <FullName>String</FullName>
+      <Id>0</Id>
+      <Image>String</Image>
+      <LastMessage>String</LastMessage>
+      <LastMessageDateTime>0001-01-01T00:00:00</LastMessageDateTime>
+    </ContactModel>
+  </Contacts>
+</ContactsResponse>
+```
+
+### Chat
+
+Get messages for chat with user.
+
+#### GET /chat
+
+Request
+
+```json
+{"UserId":0}
+```
+
+or request
+
+```json
+<Chat xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://schemas.datacontract.org/2004/07/">
+  <UserId>0</UserId>
+</Chat>
+```
+
+response
+
+```json
+{"Messages":[{"FullName":"String","Image":"String","Text":"String","DateTime":"\/Date(-62135596800000-0000)\/"}]}
+```
+
+or response
+
+```xml
+<ChatResponse xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://schemas.datacontract.org/2004/07/">
+  <Messages>
+    <MessageModel>
+      <DateTime>0001-01-01T00:00:00</DateTime>
+      <FullName>String</FullName>
+      <Image>String</Image>
+      <Text>String</Text>
+    </MessageModel>
+  </Messages>
+</ChatResponse>
+```
+
+Send message to chat with user.
+
+#### POST /chat
+
+Request
+
+```json
+{"UserId":0,"Message":"String"}
+```
+
+or request
+
+```json
+<Chat xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://schemas.datacontract.org/2004/07/">
+  <Message>String</Message>
+  <UserId>0</UserId>
+</Chat>
+```
+
+and response HTTP status 200 Ok
 
 ## Todo
 
 * Push notifications
-
-* Docs
 
 ## License
 
