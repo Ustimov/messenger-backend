@@ -212,7 +212,9 @@ type MessengerService() =
             let image = this.Request.Files.[0]
             let dataRepository: IDataRepository = this.TryResolve()
             dataRepository.SetProfileImage(int (this.GetSession().UserAuthId), image.FileName, image.InputStream)
-        new HttpResult(HttpStatusCode.OK, "Ok")   
+            new HttpResult(HttpStatusCode.OK, "Ok")
+        else
+            new HttpResult(HttpStatusCode.ExpectationFailed, "There is no attached image")
 
 type AppHost =
     inherit AppHostHttpListenerBase

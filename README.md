@@ -199,7 +199,9 @@ Upload image as form-data.
 
 #### POST /image
 
-Request with image and response HTTP status 200 Ok
+Request with image as multipart/form-data. Make sure you provide correct image name.
+
+Response is HTTP status 200 Ok. Otherwise can be 417 Expectation Failed HTTP status if there is no attached image file or attached multiple files.
 
 ### Contacts
 
